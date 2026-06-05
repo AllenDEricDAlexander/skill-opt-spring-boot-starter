@@ -1,0 +1,7 @@
+spring:
+  ai:
+    dashscope:
+      api-key: sk-c98a304fb91a403ab6f33389ce24c52b
+
+server:
+  port: 18888
