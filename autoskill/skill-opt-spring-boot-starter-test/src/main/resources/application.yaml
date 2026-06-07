@@ -5,3 +5,11 @@ spring:
 
 server:
   port: 18888
+
+skill-opt:
+  sqlite:
+    database: ./.skillopt/skillopt.db
+    workspace: ./.skillopt
+    versions-directory: ./.skillopt/versions
+    best-directory: ./.skillopt/best
+    auto-overwrite-best-skill: false
