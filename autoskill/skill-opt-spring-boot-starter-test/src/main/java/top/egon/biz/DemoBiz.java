@@ -34,11 +34,11 @@ import java.util.concurrent.CopyOnWriteArrayList;
 public class DemoBiz {
   private static final String POEM_INTENT_SKILL = "poem-intent";
 
-  // 初始化 ChatModel
-  DashScopeApi dashScopeApi =
-      DashScopeApi.builder().apiKey("sk-c98a304fb91a403ab6f33389ce24c52b").build();
+  DashScopeApi dashScopeApi = DashScopeApi.builder().build();
 
   ChatModel chatModel = DashScopeChatModel.builder().dashScopeApi(dashScopeApi).build();
+
+  PoemOutputEvaluator poemOutputEvaluator = new PoemOutputEvaluator(chatModel);
 
   @GetMapping("/demo")
   public String demo() throws Exception {
@@ -68,7 +68,7 @@ public class DemoBiz {
         .interceptors(List.of(new SkillOptToolTraceInterceptor(toolCalls))).build();
     AssistantMessage response = agent.call("请使用 poem-intent skill 完成任务：" + skillCase.input());
     String output = response.getText();
-    double score = scorePoemOutput(output, toolCalls);
+    double score = poemOutputEvaluator.score(skillCase, output, toolCalls);
     return SkillOptRolloutEvidence.success(skillCase.id(), skillCase.input(), skillFile, output,
         score, List.copyOf(toolCalls));
   }
@@ -97,23 +97,6 @@ public class DemoBiz {
       return List.of(SkillEditOperation.add("## 写诗流程\n", addition));
     }
     return List.of(SkillEditOperation.add("", "\n## 写诗流程\n" + addition));
-  }
-
-  private double scorePoemOutput(String output, List<SkillOptToolCall> toolCalls) {
-    double score = 0.0;
-    if (toolCalls.stream().anyMatch(toolCall -> "read_skill".equals(toolCall.toolName()))) {
-      score += 0.25;
-    }
-    if (output.contains("意图")) {
-      score += 0.30;
-    }
-    if (output.contains("诗") || output.lines().count() >= 3) {
-      score += 0.25;
-    }
-    if (output.length() >= 40) {
-      score += 0.20;
-    }
-    return Math.min(1.0, score);
   }
 
   private String summarizeRollouts(List<SkillOptRolloutEvidence> rollouts) {
