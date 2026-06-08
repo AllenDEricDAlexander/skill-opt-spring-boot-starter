@@ -1,0 +1,8 @@
+{
+  "orderId": "ORD-90001",
+  "amount": 12500,
+  "currency": "USD",
+  "country": "IR",
+  "customerTier": "NEW",
+  "newDevice": true
+}

@@ -141,7 +141,8 @@ class SingleFlowSkillOptimizerSqliteTest {
       assertThat(result.candidateSkillFile()).startsWith(versionsDirectory);
       assertThat(result.bestSkillFile())
           .isEqualTo(bestDirectory.resolve("poem-intent").resolve("best_skill.md"));
-      Path baseSkillBackupFile = result.candidateSkillFile().resolveSibling("base_skill.md");
+      Path baseSkillBackupFile =
+          result.candidateSkillFile().getParent().getParent().resolve("base_skill.md");
       assertThat(baseSkillBackupFile).exists();
       assertThat(Files.readString(baseSkillBackupFile, StandardCharsets.UTF_8))
           .isEqualTo(originalSkillContent);

@@ -46,6 +46,7 @@ export DASH_SCOPE_API_KEY=your_dashscope_api_key
 
 ```bash
 curl http://localhost:18888/demo
+curl http://localhost:18888/complex
 ```
 
 接口返回示例：
@@ -56,22 +57,88 @@ accepted=true, baselineScore=0.48, candidateScore=0.92, candidateSkill=..., best
 
 实际分数由模型评分结果决定，所以每次运行可能不同。
 
+`/complex` 会运行 `order-risk-audit` 复杂 skill 示例：先把本地 skill 包按 Nacos ZIP 结构进入
+`.skillopt/nacos-cache`，再通过 `FileSystemSkillRegistry` 读取 skill，并用 `ShellTool2` 在 skill 包根目录执行
+`scripts/audit_order.sh`，返回高风险和普通订单的 JSON 判断。
+
 ## 输出结果
 
 运行 `/demo` 后，工作目录下会生成 `.skillopt`：
 
 ```text
 .skillopt/
-├── versions/poem-intent/<round>/poem-intent/base_skill.md
+├── versions/poem-intent/<round>/base_skill.md
 ├── versions/poem-intent/<round>/poem-intent/SKILL.md
+├── best/poem-intent/SKILL.md
 └── best/poem-intent/best_skill.md
 ```
 
 - `base_skill.md`：本轮优化前的原始 skill。
 - `SKILL.md`：本轮生成的 candidate skill。
-- `best_skill.md`：通过验证闸门后导出的最佳 skill。
+- `best_skill.md`：通过验证闸门后导出的最佳 skill 内容快照。
 
 当前示例配置 `auto-overwrite-best-skill: false`，所以不会直接覆盖 `src/main/resources/skills/poem-intent/SKILL.md`。
+
+## Nacos 3.2 Skill ZIP
+
+starter 已接入 Nacos 3.2.2 的官方 AI skill ZIP API：
+
+- 下载：`AiService.downloadSkillZip(...)`、`downloadSkillZipByVersion(...)`、`downloadSkillZipByLabel(...)`。
+- 上传：`AiMaintainerService.skill().uploadSkillFromZip(...)`。
+- 本地运行：ZIP 会展开到 `.skillopt/nacos-cache`，再通过 Spring AI Alibaba `FileSystemSkillRegistry` 提供给
+  `SkillsAgentHook` 的 `read_skill`。
+- 脚本执行：带 `scripts/` 的 skill 可以用 `SkillPackageShellToolFactory` 创建官方 `ShellTool2` 和 `ShellToolAgentHook`
+  ，工作目录限制在该 skill 包根目录。
+
+配置示例：
+
+```yaml
+skill-opt:
+  nacos:
+    enabled: true
+    server-addr: 127.0.0.1:8848
+    namespace-id: public
+    username: ${NACOS_USERNAME}
+    password: ${NACOS_PASSWORD}
+    cache-directory: ./.skillopt/nacos-cache
+```
+
+应用侧典型接法：
+
+```java
+SkillPackage skillPackage = nacosSkillPackageRepository.download(
+    new NacosSkillLocation("public", "complex-skill", "1.0.0", "", false));
+SkillRegistry registry = skillPackage.createFileSystemSkillRegistry();
+SkillsAgentHook skillsHook = SkillsAgentHook.builder().skillRegistry(registry).build();
+ShellToolAgentHook shellHook =
+    new SkillPackageShellToolFactory(SkillPackageShellOptions.defaults()).createHook(skillPackage);
+```
+
+优化后如果验证通过，可以把 candidate 目录作为完整 skill 包上传；`SingleFlowSkillOptimizer`
+会保留原包里的 `scripts/` 等资源文件，只覆盖 candidate 的 `SKILL.md`。
+
+starter 模块里还提供了一个复杂 skill smoke test：`order-risk-audit`。它包含 `SKILL.md`、`scripts/audit_order.sh`、JSON
+schema 和高/低风险订单样例，测试会模拟 Nacos ZIP 下载后通过 `FileSystemSkillRegistry` 读取 skill，并通过 `ShellTool2` 在
+skill 包根目录执行脚本。
+
+```bash
+./mvnw -pl skill-opt-spring-boot-starter -Dtest=ComplexSkillPackageSmokeTest test
+```
+
+如果要连真实 Nacos 3.2.x 验证上传、发布、下载和脚本执行，可以启用默认跳过的 live 测试：
+
+```bash
+export NACOS_PASSWORD=your_nacos_password
+./mvnw -pl skill-opt-spring-boot-starter \
+  -Dtest=ComplexSkillNacosLiveIT \
+  -Dskillopt.nacos.live=true \
+  -Dskillopt.nacos.username=test \
+  -Dskillopt.nacos.contextPath=/nacos \
+  test
+```
+
+这个 live 测试会创建临时 skill、上传 ZIP、force publish、按版本下载，最后删除临时 skill。运行账号需要具备 Nacos AI skill
+maintainer/admin 权限；只有普通登录权限时，上传接口会返回 `403 authorization failed`。
 
 ## 调整示例
 

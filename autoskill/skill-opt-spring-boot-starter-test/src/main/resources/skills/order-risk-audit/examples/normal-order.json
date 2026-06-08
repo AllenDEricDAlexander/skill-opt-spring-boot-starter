@@ -1,0 +1,8 @@
+{
+  "orderId": "ORD-10001",
+  "amount": 320,
+  "currency": "USD",
+  "country": "US",
+  "customerTier": "VIP",
+  "newDevice": false
+}

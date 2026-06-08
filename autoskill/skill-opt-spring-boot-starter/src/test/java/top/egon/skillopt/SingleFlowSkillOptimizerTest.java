@@ -71,4 +71,42 @@ class SingleFlowSkillOptimizerTest {
     assertThat(result.rollouts()).extracting(SkillOptRolloutEvidence::caseId)
         .containsExactly("reflect-001", "valid-001", "valid-001");
   }
+
+  @Test
+  void preservesSkillPackageResourcesInCandidateAndBestDirectories() throws Exception {
+    Path skillFile = tempDir.resolve("skills/complex-skill/SKILL.md");
+    Files.createDirectories(skillFile.getParent().resolve("scripts"));
+    Files.writeString(skillFile, """
+        ---
+        name: complex-skill
+        description: 使用脚本校验输入
+        ---
+
+        # 复杂 Skill
+        """, StandardCharsets.UTF_8);
+    Files.writeString(skillFile.getParent().resolve("scripts/check.sh"), "echo ok\n",
+        StandardCharsets.UTF_8);
+
+    SkillRolloutRunner runner = (skillCase, currentSkillFile) -> {
+      String skillContent = Files.readString(currentSkillFile, StandardCharsets.UTF_8);
+      double score = skillContent.contains("scripts/check.sh") ? 0.91 : 0.42;
+      return SkillOptRolloutEvidence.success(skillCase.id(), skillCase.input(), currentSkillFile,
+          "output for " + skillCase.id(), score, List.of());
+    };
+    SkillReflector reflector =
+        rollouts -> new SkillReflection("缺少脚本校验约束", List.of("说明 scripts/check.sh 的使用时机。"));
+    SkillEditPlanner editPlanner = (skillContent, reflection) -> List
+        .of(SkillEditOperation.add("", "\n## 脚本校验\n- 使用 scripts/check.sh 校验输入。\n"));
+    SingleFlowSkillOptimizer optimizer = new SingleFlowSkillOptimizer(
+        new SkillOptFlowOptions(tempDir.resolve(".skillopt"), 0.01, 64000), runner, reflector,
+        editPlanner);
+
+    SkillOptimizationResult result = optimizer.optimize("complex-skill", skillFile,
+        List.of(new SkillOptCase("reflect-001", "校验这个输入", "需要调用脚本", SkillOptCaseSplit.REFLECTION)),
+        List.of(new SkillOptCase("valid-001", "校验另一个输入", "需要调用脚本", SkillOptCaseSplit.VALIDATION)));
+
+    assertThat(result.accepted()).isTrue();
+    assertThat(result.candidateSkillFile().getParent().resolve("scripts/check.sh")).exists();
+    assertThat(result.bestSkillFile().getParent().resolve("scripts/check.sh")).exists();
+  }
 }

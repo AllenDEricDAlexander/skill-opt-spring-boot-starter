@@ -1,1 +1,2 @@
 top.egon.skillopt.autoconfigure.SkillOptSqliteAutoConfiguration
+top.egon.skillopt.autoconfigure.SkillOptNacosAutoConfiguration

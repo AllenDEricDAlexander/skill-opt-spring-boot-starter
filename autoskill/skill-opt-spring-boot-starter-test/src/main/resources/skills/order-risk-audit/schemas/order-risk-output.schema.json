@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "OrderRiskAuditOutput",
+  "type": "object",
+  "required": [
+    "orderId",
+    "decision",
+    "riskScore",
+    "reasons"
+  ],
+  "properties": {
+    "orderId": {
+      "type": "string"
+    },
+    "decision": {
+      "type": "string",
+      "enum": [
+        "REVIEW",
+        "APPROVE"
+      ]
+    },
+    "riskScore": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "reasons": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "additionalProperties": false
+}

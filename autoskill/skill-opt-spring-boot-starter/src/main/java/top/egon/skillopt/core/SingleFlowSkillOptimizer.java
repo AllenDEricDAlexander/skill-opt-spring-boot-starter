@@ -14,9 +14,12 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
+import java.util.stream.Stream;
 
 /**
  * Runs one Rollout -> Reflect -> Edit -> Gate -> Export optimization round.
@@ -80,7 +83,7 @@ public class SingleFlowSkillOptimizer {
       String candidateContent = skillEditor.apply(skillContent, editOperations);
       traceStore.recordEditOperations(roundId, editOperations);
       Path baseSkillBackupFile = writeBaseSkillBackup(skillName, skillContent, roundId);
-      Path candidateSkillFile = writeCandidate(skillName, candidateContent, roundId);
+      Path candidateSkillFile = writeCandidate(skillName, skillFile, candidateContent, roundId);
 
       List<SkillOptRolloutEvidence> baselineValidation =
           runRollouts(roundId, "VALIDATION_BASELINE", validationCases, skillFile);
@@ -95,7 +98,7 @@ public class SingleFlowSkillOptimizer {
           && candidateScore - baselineScore >= options.minValidationImprovement();
       Path bestSkillFile = null;
       if (accepted) {
-        bestSkillFile = exportBestSkill(skillName, skillFile, candidateContent);
+        bestSkillFile = exportBestSkill(skillName, skillFile, candidateSkillFile, candidateContent);
       }
       String candidateSkillHash = SkillOptHash.sha256(candidateSkillFile);
       traceStore.completeRound(roundId, baselineScore, candidateScore, baseSkillBackupFile,
@@ -127,11 +130,12 @@ public class SingleFlowSkillOptimizer {
     return rollouts;
   }
 
-  private Path writeCandidate(String skillName, String candidateContent, String roundId)
-      throws IOException {
-    Path candidateSkillFile = options.versionsDirectory().resolve(safeName(skillName))
-        .resolve(roundId).resolve(safeName(skillName)).resolve("SKILL.md");
-    Files.createDirectories(candidateSkillFile.getParent());
+  private Path writeCandidate(String skillName, Path sourceSkillFile, String candidateContent,
+      String roundId) throws IOException {
+    Path candidateSkillRoot = options.versionsDirectory().resolve(safeName(skillName))
+        .resolve(roundId).resolve(safeName(skillName));
+    copyDirectory(sourceSkillFile.getParent(), candidateSkillRoot);
+    Path candidateSkillFile = candidateSkillRoot.resolve("SKILL.md");
     Files.writeString(candidateSkillFile, candidateContent, StandardCharsets.UTF_8);
     return candidateSkillFile;
   }
@@ -139,22 +143,57 @@ public class SingleFlowSkillOptimizer {
   private Path writeBaseSkillBackup(String skillName, String skillContent, String roundId)
       throws IOException {
     Path baseSkillBackupFile = options.versionsDirectory().resolve(safeName(skillName))
-        .resolve(roundId).resolve(safeName(skillName)).resolve("base_skill.md");
+        .resolve(roundId).resolve("base_skill.md");
     Files.createDirectories(baseSkillBackupFile.getParent());
     Files.writeString(baseSkillBackupFile, skillContent, StandardCharsets.UTF_8);
     return baseSkillBackupFile;
   }
 
-  private Path exportBestSkill(String skillName, Path skillFile, String candidateContent)
-      throws IOException {
-    Path bestSkillFile =
-        options.bestDirectory().resolve(safeName(skillName)).resolve("best_skill.md");
+  private Path exportBestSkill(String skillName, Path skillFile, Path candidateSkillFile,
+      String candidateContent) throws IOException {
+    Path bestSkillRoot = options.bestDirectory().resolve(safeName(skillName));
+    copyDirectory(candidateSkillFile.getParent(), bestSkillRoot);
+    Path bestSkillFile = bestSkillRoot.resolve("best_skill.md");
     Files.createDirectories(bestSkillFile.getParent());
     Files.writeString(bestSkillFile, candidateContent, StandardCharsets.UTF_8);
     if (options.autoOverwriteBestSkill()) {
       Files.writeString(skillFile, candidateContent, StandardCharsets.UTF_8);
     }
     return bestSkillFile;
+  }
+
+  private void copyDirectory(Path sourceDirectory, Path targetDirectory) throws IOException {
+    if (sourceDirectory == null || !Files.isDirectory(sourceDirectory)) {
+      Files.createDirectories(targetDirectory);
+      return;
+    }
+    deleteDirectory(targetDirectory);
+    try (Stream<Path> paths = Files.walk(sourceDirectory)) {
+      for (Path source : paths.sorted(Comparator.naturalOrder()).toList()) {
+        Path relative = sourceDirectory.relativize(source);
+        Path target = targetDirectory.resolve(relative).normalize();
+        if (!target.startsWith(targetDirectory.normalize())) {
+          throw new SecurityException("path escapes target directory: " + source);
+        }
+        if (Files.isDirectory(source)) {
+          Files.createDirectories(target);
+        } else {
+          Files.createDirectories(target.getParent());
+          Files.copy(source, target, StandardCopyOption.REPLACE_EXISTING);
+        }
+      }
+    }
+  }
+
+  private void deleteDirectory(Path directory) throws IOException {
+    if (!Files.exists(directory)) {
+      return;
+    }
+    try (Stream<Path> paths = Files.walk(directory)) {
+      for (Path path : paths.sorted(Comparator.reverseOrder()).toList()) {
+        Files.delete(path);
+      }
+    }
   }
 
   private double averageScore(List<SkillOptRolloutEvidence> rollouts) {

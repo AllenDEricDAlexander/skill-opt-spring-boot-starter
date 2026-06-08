@@ -13,3 +13,10 @@ skill-opt:
     versions-directory: ./.skillopt/versions
     best-directory: ./.skillopt/best
     auto-overwrite-best-skill: false
+  nacos:
+    enabled: false
+    server-addr: ${NACOS_SERVER_ADDR:127.0.0.1:8848}
+    namespace-id: ${NACOS_NAMESPACE_ID:public}
+    username: ${NACOS_USERNAME:test}
+    password: ${NACOS_PASSWORD:HomeLab666}
+    cache-directory: ./.skillopt/nacos-cache
